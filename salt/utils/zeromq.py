@@ -44,6 +44,10 @@ if ZMQDefaultLoop is None:
     if ZMQDefaultLoop is None:
         ZMQDefaultLoop = tornado.ioloop.IOLoop
 
+# TODO: This may not be needed if we can switch to
+# `salt.utils.asynchronous.IOLooop` in the rest of the codebase. We still need
+# to validate everything with py2 and older tornado versions.
+#ZMQDefaultLoop = salt.utils.asynchronous.IOLoop
 
 def install_zmq():
     '''
