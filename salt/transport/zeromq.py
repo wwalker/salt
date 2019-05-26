@@ -1060,9 +1060,12 @@ class AsyncReqMessageClient(object):
         self.send_future_map = {}
 
         self.send_timeout_map = {}  # message -> timeout
+        self._keep_sending = True
+        self.io_loop.spawn_callback(self._internal_send_recv)
 
     # TODO: timeout all in-flight sessions, or error
     def destroy(self):
+        self._keep_sending = False
         if hasattr(self, 'stream') and self.stream is not None:
             if ZMQ_VERSION_INFO < (14, 3, 0):
                 # stream.close() doesn't work properly on pyzmq < 14.3.0
@@ -1111,7 +1114,11 @@ class AsyncReqMessageClient(object):
 
     @tornado.gen.coroutine
     def _internal_send_recv(self):
-        while len(self.send_queue) > 0:
+        log.error("internal send recv start")
+        while self._keep_sending:
+            if not self.send_queue:
+                yield tornado.gen.sleep(.01)
+                continue
             message = self.send_queue[0]
             future = self.send_future_map.get(message, None)
             if future is None:
@@ -1137,6 +1144,7 @@ class AsyncReqMessageClient(object):
             del self.send_queue[0]
             self.send_future_map.pop(message, None)
             self.remove_message_timeout(message)
+        log.error("internal send recv end")
 
     def remove_message_timeout(self, message):
         if message not in self.send_timeout_map:
@@ -1198,8 +1206,6 @@ class AsyncReqMessageClient(object):
             self.send_timeout_map[message] = send_timeout
 
         self.send_queue.append(message)
-        if len(self.send_queue) >= 1:
-            self.io_loop.spawn_callback(self._internal_send_recv)
 
         return future
 
