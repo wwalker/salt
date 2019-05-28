@@ -76,9 +76,9 @@ class BaseTCPReqCase(TestCase, AdaptedConfigurationTestCaseMixin):
 
         cls.io_loop = salt.utils.asynchronous.IOLoop()
 
-        self.evt = threading.Event()
+        cls.evt = threading.Event()
 
-        def run_loop_in_thread(loop):
+        def run_loop_in_thread(loop, evt):
             loop.make_current()
             @tornado.gen.coroutine
             def stopper():
@@ -94,7 +94,7 @@ class BaseTCPReqCase(TestCase, AdaptedConfigurationTestCaseMixin):
         except ValueError:
             log.error("Adding handle twice, this needs to be fixed for asyncio")
 
-        cls.server_thread = threading.Thread(target=run_loop_in_thread, args=(cls.io_loop,))
+        cls.server_thread = threading.Thread(target=run_loop_in_thread, args=(cls.io_loop, cls.evt))
         cls.server_thread.daemon = True
         cls.server_thread.start()
 
@@ -103,11 +103,11 @@ class BaseTCPReqCase(TestCase, AdaptedConfigurationTestCaseMixin):
         if not hasattr(cls, '_handle_payload'):
             return
         if hasattr(cls, 'io_loop'):
+            cls.process_manager.kill_children()
+            cls.server_channel.close()
             cls.evt.set()
             #cls.io_loop.add_callback(cls.io_loop.stop)
             cls.server_thread.join()
-            cls.process_manager.kill_children()
-            cls.server_channel.close()
             del cls.server_channel
 
     @classmethod
