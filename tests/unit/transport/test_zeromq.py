@@ -47,7 +47,8 @@ from tests.support.mixins import AdaptedConfigurationTestCaseMixin
 from tests.support.mock import MagicMock, patch
 from tests.unit.transport.mixins import PubChannelMixin, ReqChannelMixin
 
-
+import logging
+log = logging.getLogger(__name__)
 ON_SUSE = False
 if 'SuSE' in linux_distribution(full_distribution_name=False):
     ON_SUSE = True
@@ -94,12 +95,11 @@ class BaseZMQReqCase(TestCase, AdaptedConfigurationTestCaseMixin):
         cls.server_channel = salt.transport.server.ReqServerChannel.factory(cls.master_config)
         cls.server_channel.pre_fork(cls.process_manager)
 
-        cls.io_loop = zmq.eventloop.ioloop.ZMQIOLoop()
-        cls.io_loop.make_current()
-        cls.server_channel.post_fork(cls._handle_payload, io_loop=cls.io_loop)
-
-        cls.server_thread = threading.Thread(target=cls.io_loop.start)
-        cls.server_thread.daemon = True
+        cls.stop_loop = threading.Event()
+        cls.server_thread = threading.Thread(
+            target=ReqChannelMixin.post_fork_thread,
+            args=(cls.server_channel, cls._handle_payload, cls.stop_loop,),
+        )
         cls.server_thread.start()
 
     @classmethod
@@ -110,12 +110,13 @@ class BaseZMQReqCase(TestCase, AdaptedConfigurationTestCaseMixin):
         # Let the test suite handle this instead.
         cls.process_manager.stop_restarting()
         cls.process_manager.kill_children()
-        cls.io_loop.add_callback(cls.io_loop.stop)
+        cls.stop_loop.set()
+        cls.server_thread.join()
         cls.server_thread.join()
         time.sleep(2)  # Give the procs a chance to fully close before we stop the io_loop
         cls.server_channel.close()
         del cls.server_channel
-        del cls.io_loop
+        del cls.stop_loop
         del cls.process_manager
         del cls.server_thread
         del cls.master_config
@@ -240,11 +241,11 @@ class BaseZMQPubCase(AsyncTestCase, AdaptedConfigurationTestCaseMixin):
         cls.req_server_channel = salt.transport.server.ReqServerChannel.factory(cls.master_config)
         cls.req_server_channel.pre_fork(cls.process_manager)
 
-        cls._server_io_loop = zmq.eventloop.ioloop.ZMQIOLoop()
-        cls.req_server_channel.post_fork(cls._handle_payload, io_loop=cls._server_io_loop)
-
-        cls.server_thread = threading.Thread(target=cls._server_io_loop.start)
-        cls.server_thread.daemon = True
+        cls.stop_loop = threading.Event()
+        cls.server_thread = threading.Thread(
+            target=ReqChannelMixin.post_fork_thread,
+            args=(cls.req_server_channel, cls._handle_payload, cls.stop_loop,),
+        )
         cls.server_thread.start()
 
     @classmethod
@@ -252,13 +253,13 @@ class BaseZMQPubCase(AsyncTestCase, AdaptedConfigurationTestCaseMixin):
         cls.process_manager.kill_children()
         cls.process_manager.stop_restarting()
         time.sleep(2)  # Give the procs a chance to fully close before we stop the io_loop
-        cls.io_loop.add_callback(cls.io_loop.stop)
+        cls.stop_loop.set()
         cls.server_thread.join()
         cls.req_server_channel.close()
         cls.server_channel.close()
         cls._server_io_loop.stop()
         del cls.server_channel
-        del cls._server_io_loop
+        del cls.stop_loop
         del cls.process_manager
         del cls.server_thread
         del cls.master_config
@@ -581,11 +582,12 @@ class PubServerChannel(TestCase, AdaptedConfigurationTestCaseMixin):
                    MagicMock(return_value={'minions': ['minion'], 'missing': [],
                                            'ssh_minions': False})):
             server_channel.publish(load)
-        server_channel.publish(
-            {'tgt_type': 'glob', 'tgt': '*', 'stop': True}
-        )
+            server_channel.publish(
+                {'tgt_type': 'glob', 'tgt': '*', 'stop': True}
+            )
         gather.join()
         server_channel.pub_close()
+        del server_channel
         assert len(results) == send_num, (len(results), set(expect).difference(results))
 
     def test_publish_to_pubserv_tcp(self):
@@ -601,7 +603,10 @@ class PubServerChannel(TestCase, AdaptedConfigurationTestCaseMixin):
         send_num = 10000
         expect = []
         results = []
-        gather = threading.Thread(target=self._gather_results, args=(self.minion_config, pub_uri, results,))
+        gather = threading.Thread(
+            target=self._gather_results,
+            args=(self.minion_config, pub_uri, results, 30),
+        )
         gather.start()
         # Allow time for server channel to start, especially on windows
         time.sleep(2)
@@ -609,8 +614,12 @@ class PubServerChannel(TestCase, AdaptedConfigurationTestCaseMixin):
             expect.append(i)
             load = {'tgt_type': 'glob', 'tgt': '*', 'jid': i}
             server_channel.publish(load)
+        server_channel.publish(
+            {'tgt_type': 'glob', 'tgt': '*', 'stop': True}
+        )
         gather.join()
         server_channel.pub_close()
+        del server_channel
         assert len(results) == send_num, (len(results), set(expect).difference(results))
 
     @staticmethod

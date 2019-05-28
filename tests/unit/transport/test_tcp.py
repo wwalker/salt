@@ -58,9 +58,9 @@ class BaseTCPReqCase(TestCase, AdaptedConfigurationTestCaseMixin):
                'tcp_master_pub_port': tcp_master_pub_port,
                'tcp_master_pull_port': tcp_master_pull_port,
                'tcp_master_publish_pull': tcp_master_publish_pull,
-               'tcp_master_workers': tcp_master_workers}
+               'tcp_master_workers': tcp_master_workers,
+            }
         )
-
         cls.minion_config = cls.get_temp_config(
             'minion',
             **{'transport': 'tcp',
@@ -76,8 +76,17 @@ class BaseTCPReqCase(TestCase, AdaptedConfigurationTestCaseMixin):
 
         cls.io_loop = salt.utils.asynchronous.IOLoop()
 
+        self.evt = threading.Event()
+
         def run_loop_in_thread(loop):
             loop.make_current()
+            @tornado.gen.coroutine
+            def stopper():
+                while True:
+                    if evt.is_set():
+                        loop.stop()
+                    yield tornado.gen.sleep(.3)
+            loop.add_callback(stopper)
             loop.start()
 
         try:
@@ -94,7 +103,8 @@ class BaseTCPReqCase(TestCase, AdaptedConfigurationTestCaseMixin):
         if not hasattr(cls, '_handle_payload'):
             return
         if hasattr(cls, 'io_loop'):
-            cls.io_loop.add_callback(cls.io_loop.stop)
+            cls.evt.set()
+            #cls.io_loop.add_callback(cls.io_loop.stop)
             cls.server_thread.join()
             cls.process_manager.kill_children()
             cls.server_channel.close()
@@ -147,8 +157,17 @@ class AESReqTestCases(BaseTCPReqCase, ReqChannelMixin):
         '''
         raise tornado.gen.Return((payload, {'fun': 'send'}))
 
-    # TODO: make failed returns have a specific framing so we can raise the same exception
-    # on encrypted channels
+#    @skipIf(True, 'meh')
+#    def test_normalization(self):
+#        pass
+#
+#    @skipIf(True, 'meh')
+#    def test_basic(self):
+#        pass
+#
+#    # TODO: make failed returns have a specific framing so we can raise the same exception
+#    # on encrypted channels
+#    @skipIf(True, 'meh')
     @flaky
     def test_badload(self):
         '''

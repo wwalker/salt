@@ -1380,9 +1380,11 @@ class StateFire(object):
         try:
             channel.send(load)
         except Exception:
+            log.exception('Exception sending event')
             pass
         finally:
-            channel.stop()
+            #channel.stop()
+            pass
         return True
 
     def fire_running(self, running):
