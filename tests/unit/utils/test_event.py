@@ -52,6 +52,7 @@ def eventpublisher_process():
             time.sleep(2)
         yield
     finally:
+        proc.close()
         clean_proc(proc)
 
 
@@ -320,7 +321,11 @@ class TestSaltEvent(TestCase):
             with salt.utils.event.MasterEvent(SOCK_DIR, listen=True) as me:
                 # Must not exceed zmq HWM
                 for i in range(500):
-                    me.fire_event({'data': '{0}'.format(i)}, 'testevents')
+                    try:
+                        me.fire_event({'data': '{0}'.format(i)}, 'testevents')
+                    except Exception:
+                        me.connect_pull()
+                        me.fire_event({'data': '{0}'.format(i)}, 'testevents')
                 for i in range(500):
                     evt = me.get_event(tag='testevents')
                     self.assertGotEvent(evt, {'data': '{0}'.format(i)}, 'Event {0}'.format(i))

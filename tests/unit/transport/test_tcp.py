@@ -100,15 +100,14 @@ class BaseTCPReqCase(TestCase, AdaptedConfigurationTestCaseMixin):
 
     @classmethod
     def tearDownClass(cls):
-        if not hasattr(cls, '_handle_payload'):
-            return
-        if hasattr(cls, 'io_loop'):
-            cls.process_manager.kill_children()
-            cls.server_channel.close()
-            cls.evt.set()
-            #cls.io_loop.add_callback(cls.io_loop.stop)
-            cls.server_thread.join()
-            del cls.server_channel
+        #if not hasattr(cls, '_handle_payload'):
+        #    return
+        cls.process_manager.kill_children()
+        cls.server_channel.close()
+        cls.evt.set()
+        #cls.io_loop.add_callback(cls.io_loop.stop)
+        cls.server_thread.join()
+        del cls.server_channel
 
     @classmethod
     @tornado.gen.coroutine
@@ -227,9 +226,17 @@ class BaseTCPPubCase(AsyncTestCase, AdaptedConfigurationTestCaseMixin):
 
         def run_loop_in_thread(loop):
             loop.make_current()
+            @tornado.gen.coroutine
+            def stopper():
+                while True:
+                    if evt.is_set():
+                        loop.stop()
+                    yield tornado.gen.sleep(.3)
+            loop.add_callback(stopper)
             loop.start()
 
-        cls.server_thread = threading.Thread(target=run_loop_in_thread, args=(cls._server_io_loop,))
+        cls.evt = threading.Event()
+        cls.server_thread = threading.Thread(target=run_loop_in_thread, args=(cls._server_io_loop, cls.evt))
         cls.server_thread.daemon = True
         cls.server_thread.start()
 
@@ -242,7 +249,8 @@ class BaseTCPPubCase(AsyncTestCase, AdaptedConfigurationTestCaseMixin):
 
     @classmethod
     def tearDownClass(cls):
-        cls._server_io_loop.add_callback(cls._server_io_loop.stop)
+        #cls._server_io_loop.add_callback(cls._server_io_loop.stop)
+        cls.evt.set()
         cls.server_thread.join()
         cls.process_manager.kill_children()
         cls.req_server_channel.close()

@@ -488,17 +488,19 @@ class PubServerChannel(TestCase, AdaptedConfigurationTestCaseMixin):
         results = []
         gather = threading.Thread(target=self._gather_results, args=(self.minion_config, pub_uri, results,))
         gather.start()
-        # Allow time for server channel to start, especially on windows
-        time.sleep(2)
-        for i in range(send_num):
-            expect.append(i)
-            load = {'tgt_type': 'glob', 'tgt': '*', 'jid': i}
-            server_channel.publish(load)
-        server_channel.publish(
-            {'tgt_type': 'glob', 'tgt': '*', 'stop': True}
-        )
-        gather.join()
-        server_channel.pub_close()
+        try:
+            # Allow time for server channel to start, especially on windows
+            time.sleep(2)
+            for i in range(send_num):
+                expect.append(i)
+                load = {'tgt_type': 'glob', 'tgt': '*', 'jid': i}
+                server_channel.publish(load)
+            server_channel.publish(
+                {'tgt_type': 'glob', 'tgt': '*', 'stop': True}
+            )
+        finally:
+            gather.join()
+            server_channel.pub_close()
         assert len(results) == send_num, (len(results), set(expect).difference(results))
 
     def test_zeromq_zeromq_filtering_decode_message_no_match(self):
@@ -575,19 +577,21 @@ class PubServerChannel(TestCase, AdaptedConfigurationTestCaseMixin):
                                   kwargs={'messages': 2})
         gather.start()
         # Allow time for server channel to start, especially on windows
-        time.sleep(2)
-        expect.append(send_num)
-        load = {'tgt_type': 'glob', 'tgt': '*', 'jid': send_num}
-        with patch('salt.utils.minions.CkMinions.check_minions',
-                   MagicMock(return_value={'minions': ['minion'], 'missing': [],
-                                           'ssh_minions': False})):
-            server_channel.publish(load)
-            server_channel.publish(
-                {'tgt_type': 'glob', 'tgt': '*', 'stop': True}
-            )
-        gather.join()
-        server_channel.pub_close()
-        del server_channel
+        try:
+            time.sleep(2)
+            expect.append(send_num)
+            load = {'tgt_type': 'glob', 'tgt': '*', 'jid': send_num}
+            with patch('salt.utils.minions.CkMinions.check_minions',
+                       MagicMock(return_value={'minions': ['minion'], 'missing': [],
+                                               'ssh_minions': False})):
+                server_channel.publish(load)
+                server_channel.publish(
+                    {'tgt_type': 'glob', 'tgt': '*', 'stop': True}
+                )
+        finally:
+            gather.join()
+            server_channel.pub_close()
+            del server_channel
         assert len(results) == send_num, (len(results), set(expect).difference(results))
 
     def test_publish_to_pubserv_tcp(self):
@@ -608,18 +612,20 @@ class PubServerChannel(TestCase, AdaptedConfigurationTestCaseMixin):
             args=(self.minion_config, pub_uri, results, 30),
         )
         gather.start()
-        # Allow time for server channel to start, especially on windows
-        time.sleep(2)
-        for i in range(send_num):
-            expect.append(i)
-            load = {'tgt_type': 'glob', 'tgt': '*', 'jid': i}
-            server_channel.publish(load)
-        server_channel.publish(
-            {'tgt_type': 'glob', 'tgt': '*', 'stop': True}
-        )
-        gather.join()
-        server_channel.pub_close()
-        del server_channel
+        try:
+            # Allow time for server channel to start, especially on windows
+            time.sleep(2)
+            for i in range(send_num):
+                expect.append(i)
+                load = {'tgt_type': 'glob', 'tgt': '*', 'jid': i}
+                server_channel.publish(load)
+            server_channel.publish(
+                {'tgt_type': 'glob', 'tgt': '*', 'stop': True}
+            )
+        finally:
+            gather.join()
+            server_channel.pub_close()
+            del server_channel
         assert len(results) == send_num, (len(results), set(expect).difference(results))
 
     @staticmethod
@@ -655,15 +661,17 @@ class PubServerChannel(TestCase, AdaptedConfigurationTestCaseMixin):
         time.sleep(2)
         gather = threading.Thread(target=self._gather_results, args=(self.minion_config, pub_uri, results,))
         gather.start()
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            executor.submit(self._send_small, opts, 1)
-            executor.submit(self._send_small, opts, 2)
-            executor.submit(self._send_small, opts, 3)
-            executor.submit(self._send_large, opts, 4)
-        expect = ['{}-{}'.format(a, b) for a in range(10) for b in (1, 2, 3, 4)]
-        server_channel.publish({'tgt_type': 'glob', 'tgt': '*', 'stop': True})
-        gather.join()
-        server_channel.pub_close()
+        try:
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                executor.submit(self._send_small, opts, 1)
+                executor.submit(self._send_small, opts, 2)
+                executor.submit(self._send_small, opts, 3)
+                executor.submit(self._send_large, opts, 4)
+            expect = ['{}-{}'.format(a, b) for a in range(10) for b in (1, 2, 3, 4)]
+            server_channel.publish({'tgt_type': 'glob', 'tgt': '*', 'stop': True})
+        finally:
+            gather.join()
+            server_channel.pub_close()
         assert len(results) == send_num, (len(results), set(expect).difference(results))
 
     @skipIf(salt.utils.platform.is_windows(), 'Skip on Windows OS')
@@ -686,14 +694,16 @@ class PubServerChannel(TestCase, AdaptedConfigurationTestCaseMixin):
         time.sleep(2)
         gather = threading.Thread(target=self._gather_results, args=(self.minion_config, pub_uri, results,))
         gather.start()
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            executor.submit(self._send_small, opts, 1)
-            executor.submit(self._send_small, opts, 2)
-            executor.submit(self._send_small, opts, 3)
-            executor.submit(self._send_large, opts, 4)
-        expect = ['{}-{}'.format(a, b) for a in range(10) for b in (1, 2, 3, 4)]
-        time.sleep(0.1)
-        server_channel.publish({'tgt_type': 'glob', 'tgt': '*', 'stop': True})
-        gather.join()
-        server_channel.pub_close()
+        try:
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                executor.submit(self._send_small, opts, 1)
+                executor.submit(self._send_small, opts, 2)
+                executor.submit(self._send_small, opts, 3)
+                executor.submit(self._send_large, opts, 4)
+            expect = ['{}-{}'.format(a, b) for a in range(10) for b in (1, 2, 3, 4)]
+            time.sleep(0.1)
+            server_channel.publish({'tgt_type': 'glob', 'tgt': '*', 'stop': True})
+        finally:
+            gather.join()
+            server_channel.pub_close()
         assert len(results) == send_num, (len(results), set(expect).difference(results))
