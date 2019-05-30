@@ -125,6 +125,13 @@ class AsyncZeroMQReqChannel(salt.transport.client.ReqChannel):
     # This class is only a singleton per minion/master pair
     # mapping of io_loop -> {key -> channel}
     instance_map = weakref.WeakKeyDictionary()
+    _coroutines = [
+        'crypted_transfer_decode_dictentry',
+        '_crypted_transfer',
+        '_do_transfer',
+        '_uncrypted_transfer',
+        'send',
+    ]
 
     def __new__(cls, opts, **kwargs):
         '''
@@ -1114,7 +1121,6 @@ class AsyncReqMessageClient(object):
 
     @tornado.gen.coroutine
     def _internal_send_recv(self):
-        log.error("internal send recv start")
         while self._keep_sending:
             if not self.send_queue:
                 yield tornado.gen.sleep(.01)
@@ -1144,7 +1150,6 @@ class AsyncReqMessageClient(object):
             del self.send_queue[0]
             self.send_future_map.pop(message, None)
             self.remove_message_timeout(message)
-        log.error("internal send recv end")
 
     def remove_message_timeout(self, message):
         if message not in self.send_timeout_map:

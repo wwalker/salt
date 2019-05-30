@@ -23,6 +23,8 @@ import tornado.gen
 
 from salt.ext.six.moves import queue
 from salt.ext.six import reraise
+import salt.utils.zeromq
+import salt.utils.versions
 
 try:
     import asyncio
@@ -32,12 +34,20 @@ except ImportError:
     HAS_ASYNCIO = False
 
 
+log = logging.getLogger(__name__)
+
 if HAS_ASYNCIO:
     # TODO: Is this really needed?
     AsyncIOMainLoop().install()
 
 
-log = logging.getLogger(__name__)
+USES_ASYNCIO = (
+    HAS_ASYNCIO and
+    salt.utils.versions.LooseVersion(tornado.version) >=
+    salt.utils.versions.LooseVersion('5.0')
+)
+
+salt.utils.zeromq.install_zmq()
 
 
 @contextlib.contextmanager
@@ -212,10 +222,21 @@ class SyncWrapper(object):
             self.kwargs[self.loop_kwarg] = self.io_loop
         self.obj = cls(*args, **self.kwargs)
         self._async_methods = async_methods
-        for name in dir(self.obj):
-            if tornado.gen.is_coroutine_function(getattr(self.obj, name)):
-                self._async_methods.append(name)
         self._stop_methods = stop_methods
+        self._populate_async_methods()
+
+    def _populate_async_methods(self):
+        '''
+        We need the '_coroutines' attribute on classes until we can depricate
+        tornado<4.5. After that 'is_coroutine_fuction' will always be
+        available.
+        '''
+        if hasattr(self.obj, '_coroutines'):
+            self._async_methods += self.obj._coroutines
+        if hasattr(tornado.gen, 'is_coroutine_function'):
+            for name in dir(self.obj):
+                if tornado.gen.is_coroutine_function(getattr(self.obj, name)):
+                    self._async_methods.append(name)
 
     def __repr__(self):
         return '<SyncWrapper(cls={})'.format(self.cls)
@@ -231,7 +252,10 @@ class SyncWrapper(object):
                 method()
             except Exception:
                 log.exception("Exception encountered while running stop method")
-        self.io_loop.close()
+        io_loop = self.io_loop
+        self.io_loop = None
+        io_loop.close()
+        del io_loop
 
     def __getattr__(self, key):
         if key in self._async_methods:
@@ -260,4 +284,3 @@ class SyncWrapper(object):
         except Exception as exc:
             results.append(False)
             results.append(sys.exc_info())
-
