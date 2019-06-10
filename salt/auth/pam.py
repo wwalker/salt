@@ -53,16 +53,22 @@ log = logging.getLogger(__name__)
 
 try:
     LIBC = CDLL(find_library('c'))
+    log.debug('LIBC 01')
 
     CALLOC = LIBC.calloc
+    log.debug('LIBC 02')
     CALLOC.restype = c_void_p
+    log.debug('LIBC 03')
     CALLOC.argtypes = [c_uint, c_uint]
+    log.debug('LIBC 04')
 
     STRDUP = LIBC.strdup
+    log.debug('LIBC 05')
     STRDUP.argstypes = [c_char_p]
+    log.debug('LIBC 06')
     STRDUP.restype = POINTER(c_char)  # NOT c_char_p !!!!
 except Exception:  # pylint: disable=broad-except
-    log.trace('Failed to load libc using ctypes', exc_info=True)
+    log.debug('Failed to load libc using ctypes', exc_info=True)
     HAS_LIBC = False
 else:
     HAS_LIBC = True
@@ -133,26 +139,38 @@ class PamConv(Structure):
 
 try:
     LIBPAM = CDLL(find_library('pam'))
+    log.debug('LIBPAM 01')
     PAM_START = LIBPAM.pam_start
+    log.debug('LIBPAM 02')
     PAM_START.restype = c_int
+    log.debug('LIBPAM 03')
     PAM_START.argtypes = [c_char_p,
                           c_char_p,
                           POINTER(PamConv),
                           POINTER(PamHandle)]
+    log.debug('LIBPAM 04')
 
     PAM_AUTHENTICATE = LIBPAM.pam_authenticate
+    log.debug('LIBPAM 05')
     PAM_AUTHENTICATE.restype = c_int
+    log.debug('LIBPAM 06')
     PAM_AUTHENTICATE.argtypes = [PamHandle, c_int]
+    log.debug('LIBPAM 07')
 
     PAM_ACCT_MGMT = LIBPAM.pam_acct_mgmt
+    log.debug('LIBPAM 08')
     PAM_ACCT_MGMT.restype = c_int
+    log.debug('LIBPAM 09')
     PAM_ACCT_MGMT.argtypes = [PamHandle, c_int]
+    log.debug('LIBPAM 10')
 
     PAM_END = LIBPAM.pam_end
+    log.debug('LIBPAM 11')
     PAM_END.restype = c_int
+    log.debug('LIBPAM 12')
     PAM_END.argtypes = [PamHandle, c_int]
 except Exception:  # pylint: disable=broad-except
-    log.trace('Failed to load pam using ctypes', exc_info=True)
+    log.debug('Failed to load pam using ctypes', exc_info=True)
     HAS_PAM = False
 else:
     HAS_PAM = True
